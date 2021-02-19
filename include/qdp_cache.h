@@ -6,6 +6,7 @@
 #include <stack>
 #include <list>
 
+#include "qdp.h"
 
 namespace QDP 
 {
@@ -162,6 +163,7 @@ namespace QDP
 
   QDPCache& QDP_get_global_cache();
 
+  QDPPoolAllocator<QDPCUDAAllocator>& get__cache_pool_allocator();
 
   class JitParam
   {

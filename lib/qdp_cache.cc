@@ -20,16 +20,15 @@ namespace QDP
 
     bool __cacheverbose = false;
     bool __launchverbose = false;
-
-    CUDAPOOL& get__cache_pool_allocator()
-    {
-      if (!__cache_pool_allocator) {
-	__cache_pool_allocator = new CUDAPOOL();
-      }
-      return *__cache_pool_allocator;
-    }
   }
 
+  CUDAPOOL& get__cache_pool_allocator()
+  {
+    if (!__cache_pool_allocator) {
+      __cache_pool_allocator = new CUDAPOOL();
+    }
+    return *__cache_pool_allocator;
+  }
 
   std::vector<QDPCache::Entry>& QDPCache::get__vec_backed() {
     return __vec_backed;
