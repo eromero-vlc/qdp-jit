@@ -31,6 +31,7 @@ namespace COUNT {
   bool setIOGeomP = false;
   multi1d<int> logical_geom(Nd);   // apriori logical geometry of the machine
   multi1d<int> logical_iogeom(Nd); // apriori logical 	
+  static void setGammas();
 
 
 
@@ -63,7 +64,7 @@ namespace COUNT {
 
 
 
-  SpinMatrix QDP_Gamma_values[Ns*Ns];
+  SpinMatrix *QDP_Gamma_values = nullptr;
 
   extern SpinMatrix& Gamma(int i) {
     if (i<0 || i>15)
@@ -72,6 +73,8 @@ namespace COUNT {
       std::cerr << "Gamma() used before QDP_init\n";
       exit(1);
     }
+    if (!QDP_Gamma_values)
+      QDP_error_exit("Gammas are not initialized!");
     //QDP_info("++++ returning gammas[%d]",i);
     //std::cout << gammas[i] << "\n";
     return QDP_Gamma_values[i];
@@ -81,8 +84,9 @@ namespace COUNT {
   //! Public flag for using the GPU or not
   bool QDPuseGPU = false;
 
-  void QDP_startGPU()
+  void QDP_startGPU(int dev)
   {
+    CudaSetDevice(dev);
     QDP_info_primary("Getting GPU device properties");
     CudaGetDeviceProps();
 
@@ -91,6 +95,9 @@ namespace COUNT {
     
     // Initialize the LLVM wrapper
     llvm_wrapper_init();
+
+    // Set gammas
+    setGammas();
   }
 
 
@@ -137,7 +144,6 @@ namespace COUNT {
     }
 
     std::cout << "Setting CUDA device to " << dev << "\n";
-    CudaSetDevice( dev );
     return dev;
   }
 
@@ -166,7 +172,6 @@ namespace COUNT {
 
     printf("Global Rank: %d of %d Host: %s  Local Rank: %d of %d Setting CUDA Device to %d \n",
         rank_global, np_global, hostname, rank_local, np_local, rank_local);
-    CudaSetDevice(rank_local);
     return rank_local;
  
   }
@@ -176,16 +181,55 @@ namespace COUNT {
   {
     QDP_initialize_CUDA(argc, argv);
 #ifndef QDP_USE_COMM_SPLIT_INIT
-    QDP_setGPU();
+    int dev = QDP_setGPU();
 #endif
     QDP_initialize_QMP(argc, argv);
 
 #ifdef QDP_USE_COMM_SPLIT_INIT
-    QDP_setGPUCommSplit();
+    int dev = QDP_setGPUCommSplit();
 #endif
-    QDP_startGPU();
+    QDP_startGPU(dev);
   }
-	
+
+  static void setGammas() {
+    // QDP_info_primary("Setting gamma matrices");
+
+    SpinMatrix dgr[5];
+    for (int i = 0; i < 5; i++) {
+      for (int s = 0; s < 4; s++) {
+        for (int s2 = 0; s2 < 4; s2++) {
+          dgr[i].elem().elem(s, s2).elem().real() =
+              (float)gamma_degrand_rossi[i][s2][s][0];
+          dgr[i].elem().elem(s, s2).elem().imag() =
+              (float)gamma_degrand_rossi[i][s2][s][1];
+        }
+      }
+      // std::cout << i << "\n" << dgr[i] << "\n";
+    }
+    // QDP_info_primary("Finished setting gamma matrices");
+    // QDP_info_primary("Multiplying gamma matrices");
+
+    QDP_Gamma_values = new SpinMatrix[Ns*Ns];
+    QDP_Gamma_values[0] = dgr[4]; // Unity
+    for (int i = 1; i < 16; i++) {
+      zero_rep(QDP_Gamma_values[i]);
+      bool first = true;
+      // std::cout << "gamma value " << i << " ";
+      for (int q = 0; q < 4; q++) {
+        if (i & (1 << q)) {
+          // std::cout << q << " ";
+          if (first)
+            QDP_Gamma_values[i] = dgr[q];
+          else
+            QDP_Gamma_values[i] = QDP_Gamma_values[i] * dgr[q];
+          first = false;
+        }
+      }
+      // std::cout << "\n" << QDP_Gamma_values[i] << "\n";
+    }
+    // QDP_info_primary("Finished multiplying gamma matrices");
+  }
+
   //! Turn on the machine
   void QDP_initialize_CUDA(int *argc, char ***argv)
   {
@@ -200,43 +244,6 @@ namespace COUNT {
 	QDPIO::cerr << "QDP already inited" << endl;
 	QDP_abort(1);
       }
-
-#if 1
-    //QDP_info_primary("Setting gamma matrices");
-
-    SpinMatrix dgr[5];
-    for (int i=0;i<5;i++) {
-      for (int s=0;s<4;s++) {
-	for (int s2=0;s2<4;s2++) {
-	  dgr[i].elem().elem(s,s2).elem().real() = (float)gamma_degrand_rossi[i][s2][s][0];
-	  dgr[i].elem().elem(s,s2).elem().imag() = (float)gamma_degrand_rossi[i][s2][s][1];
-	}
-      }
-      //std::cout << i << "\n" << dgr[i] << "\n";
-    }
-    //QDP_info_primary("Finished setting gamma matrices");
-    //QDP_info_primary("Multiplying gamma matrices");
-
-    QDP_Gamma_values[0]=dgr[4]; // Unity
-    for (int i=1;i<16;i++) {
-      zero_rep(QDP_Gamma_values[i]);
-      bool first=true;
-      //std::cout << "gamma value " << i << " ";
-      for (int q=0;q<4;q++) {
-	if (i&(1<<q)) {
-	  //std::cout << q << " ";
-	  if (first)
-	    QDP_Gamma_values[i]=dgr[q];
-	  else
-	    QDP_Gamma_values[i]=QDP_Gamma_values[i]*dgr[q];
-	  first = false;
-	}
-      }
-      //std::cout << "\n" << QDP_Gamma_values[i] << "\n";
-		  
-    }
-    //QDP_info_primary("Finished multiplying gamma matrices");
-#endif
 
     CudaInit();
 
@@ -607,6 +614,9 @@ namespace COUNT {
 			QDPIO::cerr << "QDP is not inited" << std::endl;
 			QDP_abort(1);
 		}
+
+		// Deallocate gammas
+		delete [] QDP_Gamma_values;
 		
 		QDPIO::cout << "------------------\n";
 		QDPIO::cout << "-- JIT statistics:\n";

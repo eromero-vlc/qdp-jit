@@ -24,7 +24,8 @@ namespace QDP {
 #ifdef QDP_USE_COMM_SPLIT_INIT
   int QDP_setGPUCommSplit();
 #endif
-  void QDP_startGPU();
+  void QDP_startGPU(int);
+  #define QDP_FIX_GPU_SETTING
 #endif
 
 //! Turn on the machine
