@@ -286,7 +286,7 @@ namespace QDP {
     cuInit(0);
 
     int deviceCount = 0;
-    cuDeviceGetCount(&deviceCount);
+    CudaGetDeviceCount(&deviceCount);
     if (deviceCount == 0) { 
       std::cout << "There is no device supporting CUDA.\n"; 
       exit(1); 
@@ -303,25 +303,23 @@ namespace QDP {
   void CudaSetDevice(int dev)
   {
     CUresult ret;
-
     QDP_info_primary("trying to get device %d",dev);
     ret = cuDeviceGet(&cuDevice, dev);
     CudaRes(__func__,ret);
 
     QDP_info_primary("trying to grab pre-existing context",dev);
-    ret = cuCtxGetCurrent(&cuContext);
-    
-    if (ret != CUDA_SUCCESS || cuContext == NULL) {
-      QDP_info_primary("trying to create a context");
-      ret = cuCtxCreate(&cuContext, CU_CTX_MAP_HOST, cuDevice);
-    }
+    ret = cuDevicePrimaryCtxRetain(&cuContext, cuDevice);
+    CudaRes(__func__,ret);
+    ret = cuCtxSetCurrent(cuContext);
     CudaRes(__func__,ret);
 
   }
 
   void CudaMemGetInfo(size_t *free,size_t *total)
   {
-    CUresult ret = cuMemGetInfo(free, total);
+    CUresult ret = cuCtxSetCurrent(cuContext);
+    CudaRes(__func__,ret);
+    ret = cuMemGetInfo(free, total);
     CudaRes("cuMemGetInfo",ret);
   }
 
@@ -333,8 +331,7 @@ namespace QDP {
     DeviceParams::Instance().autoDetect();
 
     size_t free, total;
-    ret = cuMemGetInfo(&free, &total);
-    CudaRes("cuMemGetInfo",ret);
+    CudaMemGetInfo(&free, &total);
     total_free = free;
 
     QDP_info_primary("GPU memory: free = %lld (%f MB),  total = %lld (%f MB)",
