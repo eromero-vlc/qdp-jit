@@ -62,8 +62,6 @@ namespace COUNT {
 	{{0,0}, {0,0}, {1,0},{0,0}},
 	{{0,0}, {0,0}, {0,0},{1,0}} } };
 
-
-
   SpinMatrix *QDP_Gamma_values = nullptr;
 
   extern SpinMatrix& Gamma(int i) {
@@ -461,6 +459,7 @@ namespace COUNT {
 		
 		// Deallocate gammas
 		delete [] QDP_Gamma_values;
+		QDP_Gamma_values = nullptr;
 		
 		QDPIO::cout << "------------------\n";
 		QDPIO::cout << "-- JIT statistics:\n";
@@ -483,6 +482,9 @@ namespace COUNT {
 #if defined(QDP_USE_HDF5)
                 H5close();
 #endif
+
+		// Finalize pool allocator
+		Allocator::theQDPAllocator::DestroySingleton();
 
 		printProfile();
 		
